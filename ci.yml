@@ -1,0 +1,127 @@
+name: Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - .github/workflows/ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - .github/workflows/ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+
+      - name: Go vet
+        run: go vet ./...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Version de Go
+        run: go version
+
+      - name: Ejecutar tests
+        run: go test ./...
+
+      - name: Generar y mostrar test.log
+        run: |
+          go test -v ./... > test.log
+          cat test.log
+
+      - name: Subir artifact tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: tests
+          path: test.log
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Compilar
+        run: |
+          mkdir dist
+          go build -o dist/notas .
+
+      - name: Comprobar binario
+        run: ls -l dist/notas
+
+      - name: Subir artifact app
+        uses: actions/upload-artifact@v7
+        with:
+          name: app
+          path: dist
+
+  package:
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar artifact app
+        uses: actions/download-artifact@v8
+        with:
+          name: app
+          path: dist
+
+      - name: Descargar artifact tests
+        uses: actions/download-artifact@v8
+        with:
+          name: tests
+          path: informes
+
+      - name: Listar ficheros descargados
+        run: ls -l dist informes
+
+      - name: Ejecutar el binario
+        run: |
+          chmod +x dist/notas
+          ./dist/notas | tee salida.txt
+
+      - name: Comprobar la salida
+        run: grep "nota lista" salida.txt
+
+      - name: Mostrar log de tests
+        run: cat informes/test.log
